@@ -43,7 +43,7 @@ impl SolanaService {
         let pump_program_id = Pubkey::from_str(&config.pump_program_id)
             .expect("Invalid pump program ID");
 
-        let (log_sender, _) = broadcast::channel(1000);
+        let (log_sender, _) = broadcast::channel(10000);
 
         info!(target: "SOLANA", "Connected to Solana RPC (monitor-only mode)");
 
@@ -159,7 +159,7 @@ impl SolanaService {
         Ok(balance as f64 / 1_000_000_000.0)
     }
 
-    /// Get a parsed transaction by signature
+    /// Get a parsed transaction by signature with retry logic
     pub async fn get_transaction(&self, signature: &str) -> Result<Option<EncodedConfirmedTransactionWithStatusMeta>> {
         let sig = Signature::from_str(signature)?;
         let config = RpcTransactionConfig {
@@ -168,11 +168,29 @@ impl SolanaService {
             max_supported_transaction_version: Some(0),
         };
 
-        match self.client.get_transaction_with_config(&sig, config).await {
-            Ok(tx) => Ok(Some(tx)),
-            Err(e) => {
-                warn!(target: "SOLANA", "Failed to get transaction {}: {}", signature, e);
-                Ok(None)
+        // Retry with exponential backoff for rate limiting
+        let mut attempts = 0;
+        let max_attempts = 3;
+        let mut delay_ms = 500;
+
+        loop {
+            match self.client.get_transaction_with_config(&sig, config.clone()).await {
+                Ok(tx) => return Ok(Some(tx)),
+                Err(e) => {
+                    let error_str = e.to_string();
+                    
+                    // Check if rate limited (429)
+                    if error_str.contains("429") && attempts < max_attempts {
+                        attempts += 1;
+                        warn!(target: "SOLANA", "Rate limited, retrying in {}ms (attempt {}/{})", delay_ms, attempts, max_attempts);
+                        tokio::time::sleep(tokio::time::Duration::from_millis(delay_ms)).await;
+                        delay_ms *= 2; // Exponential backoff
+                        continue;
+                    }
+                    
+                    warn!(target: "SOLANA", "Failed to get transaction {}: {}", signature, e);
+                    return Ok(None);
+                }
             }
         }
     }

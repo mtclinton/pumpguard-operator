@@ -55,7 +55,7 @@ impl AlertService {
             info!(target: "ALERTS", "Telegram bot initialized");
         }
 
-        let (alert_sender, _) = broadcast::channel(1000);
+        let (alert_sender, _) = broadcast::channel(10000);
 
         Self {
             config,
