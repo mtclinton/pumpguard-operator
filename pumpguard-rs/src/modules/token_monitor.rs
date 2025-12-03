@@ -56,6 +56,7 @@ impl Default for TokenFilters {
 
 /// Token monitor statistics
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TokenMonitorStats {
     pub tokens_detected: u64,
     pub alerts_sent: u64,
@@ -145,6 +146,9 @@ impl TokenMonitor {
                         });
 
                         if is_create {
+                            // Throttle: small delay between processing
+                            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+                            
                             if let Err(e) = Self::handle_new_token(
                                 &solana,
                                 &alerts,

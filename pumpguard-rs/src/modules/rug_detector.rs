@@ -72,6 +72,7 @@ pub struct RugThresholds {
 
 /// Rug detector statistics
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RugDetectorStats {
     pub tokens_watched: u64,
     pub rugs_detected: u64,
@@ -229,6 +230,9 @@ impl RugDetector {
                                 .any(|log| log.contains("Program log: Instruction: Sell"));
 
                             if is_sell {
+                                // Throttle processing
+                                tokio::time::sleep(Duration::from_millis(100)).await;
+                                
                                 if let Err(e) = Self::analyze_sell_transaction(
                                     &solana,
                                     &alerts,

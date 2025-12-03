@@ -67,6 +67,7 @@ pub struct WhaleThresholds {
 
 /// Whale watcher statistics
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct WhaleWatcherStats {
     pub wallets_tracked: u64,
     pub whales_identified: u64,
@@ -261,6 +262,9 @@ impl WhaleWatcher {
                                 .any(|log| log.contains("Program log: Instruction: Sell"));
 
                             if is_buy || is_sell {
+                                // Throttle processing
+                                tokio::time::sleep(Duration::from_millis(100)).await;
+                                
                                 let tx_type = if is_buy { "buy" } else { "sell" };
                                 if let Err(e) = Self::analyze_transaction(
                                     &solana,

@@ -86,6 +86,7 @@ pub struct ModuleStatus {
 
 /// Stats response
 #[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct StatsResponse {
     token_monitor: crate::modules::token_monitor::TokenMonitorStats,
     rug_detector: crate::modules::rug_detector::RugDetectorStats,
