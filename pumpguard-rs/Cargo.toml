@@ -1,0 +1,68 @@
+[package]
+name = "pumpguard"
+version = "1.0.0"
+edition = "2021"
+description = "PumpGuard - pump.fun Monitoring Suite (New Tokens, Rug Detection, Whale Watching)"
+authors = ["PumpGuard Team"]
+license = "MIT"
+
+[dependencies]
+# Async runtime
+tokio = { version = "1.35", features = ["full", "tracing"] }
+
+# Solana
+solana-client = "1.18"
+solana-sdk = "1.18"
+solana-account-decoder = "1.18"
+solana-transaction-status = "1.18"
+
+# Web framework
+axum = { version = "0.7", features = ["ws", "macros"] }
+axum-extra = { version = "0.9", features = ["typed-header"] }
+tower = { version = "0.4", features = ["util", "timeout"] }
+tower-http = { version = "0.5", features = ["fs", "cors", "trace"] }
+
+# WebSocket
+tokio-tungstenite = "0.21"
+futures-util = "0.3"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Database
+rusqlite = { version = "0.31", features = ["bundled"] }
+
+# Telegram
+teloxide = { version = "0.12", features = ["macros"] }
+
+# Metrics
+prometheus = "0.13"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+
+# Configuration
+dotenvy = "0.15"
+
+# Time
+chrono = { version = "0.4", features = ["serde"] }
+
+# HTTP client (for RPC fallback)
+reqwest = { version = "0.11", features = ["json"] }
+
+# Utilities
+thiserror = "1.0"
+anyhow = "1.0"
+parking_lot = "0.12"
+dashmap = "5.5"
+bs58 = "0.5"
+base64 = "0.21"
+
+[profile.release]
+lto = true
+codegen-units = 1
+opt-level = 3
+strip = true
+

@@ -1,0 +1,118 @@
+# ServiceMonitor for Prometheus Operator
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: pumpguard
+  namespace: pumpguard-system
+  labels:
+    app.kubernetes.io/name: pumpguard
+    release: prometheus  # Match your Prometheus Operator release
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: pumpguard
+  namespaceSelector:
+    any: true
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 15s
+      scrapeTimeout: 10s
+---
+# PrometheusRule for alerting
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: pumpguard-alerts
+  namespace: pumpguard-system
+  labels:
+    app.kubernetes.io/name: pumpguard
+    release: prometheus
+spec:
+  groups:
+    - name: pumpguard.rules
+      rules:
+        # Rug Pull Detection Alert
+        - alert: PumpGuardRugDetected
+          expr: increase(pumpguard_rugs_detected_total[5m]) > 0
+          for: 0m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Rug pull detected by PumpGuard"
+            description: "PumpGuard has detected a potential rug pull. Check the dashboard for details."
+        
+        # High Suspicion Score
+        - alert: PumpGuardHighSuspicion
+          expr: pumpguard_token_suspicion_score > 70
+          for: 1m
+          labels:
+            severity: warning
+          annotations:
+            summary: "High suspicion score for token {{ $labels.symbol }}"
+            description: "Token {{ $labels.symbol }} ({{ $labels.mint }}) has suspicion score {{ $value }}"
+        
+        # Whale Dump Alert
+        - alert: PumpGuardWhaleDump
+          expr: increase(pumpguard_dump_alerts_total[5m]) > 2
+          for: 0m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Multiple whale dumps detected"
+            description: "{{ $value }} whale dump alerts in the last 5 minutes"
+        
+        # Module Down
+        - alert: PumpGuardModuleDown
+          expr: pumpguard_module_running == 0
+          for: 2m
+          labels:
+            severity: warning
+          annotations:
+            summary: "PumpGuard module {{ $labels.module }} is not running"
+            description: "The {{ $labels.module }} module has been down for more than 2 minutes"
+        
+        # WebSocket Disconnected
+        - alert: PumpGuardWebSocketDisconnected
+          expr: pumpguard_websocket_connected == 0
+          for: 1m
+          labels:
+            severity: critical
+          annotations:
+            summary: "PumpGuard WebSocket disconnected"
+            description: "WebSocket connection to Solana has been down for more than 1 minute"
+        
+        # Low Wallet Balance
+        - alert: PumpGuardLowBalance
+          expr: pumpguard_wallet_balance_sol < 0.1
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "PumpGuard wallet balance is low"
+            description: "Wallet balance is {{ $value }} SOL, below 0.1 SOL threshold"
+        
+        # High Snipe Failure Rate
+        - alert: PumpGuardHighSnipeFailureRate
+          expr: |
+            (
+              increase(pumpguard_snipes_failed_total[10m]) /
+              (increase(pumpguard_snipes_attempted_total[10m]) + 1)
+            ) > 0.5
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "High snipe failure rate"
+            description: "More than 50% of snipe attempts are failing"
+        
+        # RPC Latency High
+        - alert: PumpGuardRPCLatencyHigh
+          expr: histogram_quantile(0.95, rate(pumpguard_rpc_latency_seconds_bucket[5m])) > 1
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "High RPC latency detected"
+            description: "95th percentile RPC latency is {{ $value }}s"
+

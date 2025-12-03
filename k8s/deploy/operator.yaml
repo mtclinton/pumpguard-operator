@@ -1,0 +1,95 @@
+# PumpGuard Operator Deployment
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: pumpguard-system
+  labels:
+    app.kubernetes.io/name: pumpguard-operator
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: pumpguard-operator
+  namespace: pumpguard-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: pumpguard-operator
+rules:
+  # PumpGuard CRDs
+  - apiGroups: ["pumpguard.fun"]
+    resources: ["pumpguards", "pumpguards/status", "tokenmonitors", "tokenmonitors/status"]
+    verbs: ["*"]
+  
+  # Core resources for managing deployments
+  - apiGroups: [""]
+    resources: ["configmaps", "secrets", "services", "pods"]
+    verbs: ["*"]
+  
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["*"]
+  
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingresses"]
+    verbs: ["*"]
+  
+  # Events for status updates
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: pumpguard-operator
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: pumpguard-operator
+subjects:
+  - kind: ServiceAccount
+    name: pumpguard-operator
+    namespace: pumpguard-system
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pumpguard-operator
+  namespace: pumpguard-system
+  labels:
+    app.kubernetes.io/name: pumpguard-operator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: pumpguard-operator
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: pumpguard-operator
+    spec:
+      serviceAccountName: pumpguard-operator
+      containers:
+        - name: operator
+          image: pumpguard/operator:latest
+          imagePullPolicy: Always
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "128Mi"
+            limits:
+              cpu: "200m"
+              memory: "256Mi"
+          env:
+            - name: WATCH_NAMESPACE
+              value: ""  # Empty = watch all namespaces
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: OPERATOR_NAME
+              value: "pumpguard-operator"
+

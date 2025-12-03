@@ -1,0 +1,349 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: pumpguards.pumpguard.fun
+spec:
+  group: pumpguard.fun
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                # Solana Configuration
+                rpcUrl:
+                  type: string
+                  default: "https://api.mainnet-beta.solana.com"
+                wsUrl:
+                  type: string
+                  default: "wss://api.mainnet-beta.solana.com"
+                walletSecretRef:
+                  type: object
+                  properties:
+                    name:
+                      type: string
+                    key:
+                      type: string
+                
+                # Module Configuration
+                modules:
+                  type: object
+                  properties:
+                    sniper:
+                      type: object
+                      properties:
+                        enabled:
+                          type: boolean
+                          default: true
+                        maxBuyAmountSol:
+                          type: number
+                          default: 0.1
+                        slippagePercent:
+                          type: number
+                          default: 15
+                        minLiquiditySol:
+                          type: number
+                          default: 0.5
+                        maxLiquiditySol:
+                          type: number
+                          default: 100
+                        blacklistedCreators:
+                          type: array
+                          items:
+                            type: string
+                        whitelistedCreators:
+                          type: array
+                          items:
+                            type: string
+                    
+                    rugDetector:
+                      type: object
+                      properties:
+                        enabled:
+                          type: boolean
+                          default: true
+                        autoSellOnRug:
+                          type: boolean
+                          default: true
+                        lpRemovalThresholdPercent:
+                          type: number
+                          default: 50
+                        suspiciousSellPercent:
+                          type: number
+                          default: 10
+                        devWalletSellAlert:
+                          type: boolean
+                          default: true
+                    
+                    whaleWatcher:
+                      type: object
+                      properties:
+                        enabled:
+                          type: boolean
+                          default: true
+                        whaleThresholdSol:
+                          type: number
+                          default: 50
+                        alertOnAccumulation:
+                          type: boolean
+                          default: true
+                        alertOnDump:
+                          type: boolean
+                          default: true
+                        watchedWallets:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              address:
+                                type: string
+                              label:
+                                type: string
+                
+                # Alerting Configuration
+                alerting:
+                  type: object
+                  properties:
+                    telegram:
+                      type: object
+                      properties:
+                        enabled:
+                          type: boolean
+                          default: false
+                        secretRef:
+                          type: object
+                          properties:
+                            name:
+                              type: string
+                            botTokenKey:
+                              type: string
+                            chatIdKey:
+                              type: string
+                    webhook:
+                      type: object
+                      properties:
+                        enabled:
+                          type: boolean
+                          default: false
+                        url:
+                          type: string
+                
+                # Dashboard Configuration
+                dashboard:
+                  type: object
+                  properties:
+                    enabled:
+                      type: boolean
+                      default: true
+                    port:
+                      type: integer
+                      default: 3000
+                    ingress:
+                      type: object
+                      properties:
+                        enabled:
+                          type: boolean
+                          default: false
+                        host:
+                          type: string
+                        tls:
+                          type: boolean
+                          default: false
+                
+                # Resource Configuration
+                resources:
+                  type: object
+                  properties:
+                    requests:
+                      type: object
+                      properties:
+                        cpu:
+                          type: string
+                          default: "100m"
+                        memory:
+                          type: string
+                          default: "256Mi"
+                    limits:
+                      type: object
+                      properties:
+                        cpu:
+                          type: string
+                          default: "500m"
+                        memory:
+                          type: string
+                          default: "512Mi"
+                
+                replicas:
+                  type: integer
+                  default: 1
+                  minimum: 1
+                  maximum: 1
+            
+            status:
+              type: object
+              properties:
+                phase:
+                  type: string
+                conditions:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      type:
+                        type: string
+                      status:
+                        type: string
+                      lastTransitionTime:
+                        type: string
+                      reason:
+                        type: string
+                      message:
+                        type: string
+                modules:
+                  type: object
+                  properties:
+                    sniper:
+                      type: object
+                      properties:
+                        running:
+                          type: boolean
+                        tokensDetected:
+                          type: integer
+                        snipesExecuted:
+                          type: integer
+                    rugDetector:
+                      type: object
+                      properties:
+                        running:
+                          type: boolean
+                        tokensWatched:
+                          type: integer
+                        rugsDetected:
+                          type: integer
+                    whaleWatcher:
+                      type: object
+                      properties:
+                        running:
+                          type: boolean
+                        whalesTracked:
+                          type: integer
+                lastUpdated:
+                  type: string
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+        - name: Phase
+          type: string
+          jsonPath: .status.phase
+        - name: Sniper
+          type: boolean
+          jsonPath: .spec.modules.sniper.enabled
+        - name: Rug Detector
+          type: boolean
+          jsonPath: .spec.modules.rugDetector.enabled
+        - name: Whale Watcher
+          type: boolean
+          jsonPath: .spec.modules.whaleWatcher.enabled
+        - name: Age
+          type: date
+          jsonPath: .metadata.creationTimestamp
+  scope: Namespaced
+  names:
+    plural: pumpguards
+    singular: pumpguard
+    kind: PumpGuard
+    shortNames:
+      - pg
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: tokenmonitors.pumpguard.fun
+spec:
+  group: pumpguard.fun
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                mint:
+                  type: string
+                symbol:
+                  type: string
+                name:
+                  type: string
+                pumpguardRef:
+                  type: string
+                watchMode:
+                  type: string
+                  enum: ["monitor", "trade"]
+                  default: "monitor"
+                autoSell:
+                  type: object
+                  properties:
+                    enabled:
+                      type: boolean
+                      default: false
+                    takeProfitPercent:
+                      type: number
+                    stopLossPercent:
+                      type: number
+                    rugDetection:
+                      type: boolean
+                      default: true
+            status:
+              type: object
+              properties:
+                phase:
+                  type: string
+                suspicionScore:
+                  type: integer
+                currentLiquidity:
+                  type: number
+                isRugged:
+                  type: boolean
+                alerts:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      type:
+                        type: string
+                      message:
+                        type: string
+                      timestamp:
+                        type: string
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+        - name: Symbol
+          type: string
+          jsonPath: .spec.symbol
+        - name: Suspicion
+          type: integer
+          jsonPath: .status.suspicionScore
+        - name: Rugged
+          type: boolean
+          jsonPath: .status.isRugged
+        - name: Phase
+          type: string
+          jsonPath: .status.phase
+  scope: Namespaced
+  names:
+    plural: tokenmonitors
+    singular: tokenmonitor
+    kind: TokenMonitor
+    shortNames:
+      - tm
+

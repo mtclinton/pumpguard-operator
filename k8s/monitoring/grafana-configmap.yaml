@@ -1,0 +1,36 @@
+# ConfigMap to auto-provision the Grafana dashboard
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pumpguard-grafana-dashboard
+  namespace: monitoring  # Change to your Grafana namespace
+  labels:
+    grafana_dashboard: "1"  # Label selector for Grafana sidecar
+data:
+  pumpguard-dashboard.json: |
+    # Paste contents of grafana-dashboard.json here
+    # Or mount the file directly
+---
+# Dashboard provisioning for Grafana
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pumpguard-dashboard-provider
+  namespace: monitoring
+  labels:
+    app: grafana
+data:
+  pumpguard.yaml: |
+    apiVersion: 1
+    providers:
+      - name: 'pumpguard'
+        orgId: 1
+        folder: 'PumpGuard'
+        folderUid: ''
+        type: file
+        disableDeletion: false
+        updateIntervalSeconds: 10
+        allowUiUpdates: true
+        options:
+          path: /var/lib/grafana/dashboards/pumpguard
+

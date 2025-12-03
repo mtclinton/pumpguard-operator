@@ -1,0 +1,949 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PumpGuard - pump.fun Monitoring Suite</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-primary: #0a0b0f;
+      --bg-secondary: #12141c;
+      --bg-tertiary: #1a1d28;
+      --bg-card: #161923;
+      --border: #2a2f3d;
+      --text-primary: #e8eaed;
+      --text-secondary: #9aa0a6;
+      --text-muted: #5f6368;
+      --accent-green: #00ff88;
+      --accent-green-dim: #00cc6a;
+      --accent-red: #ff4757;
+      --accent-red-dim: #cc3a47;
+      --accent-blue: #4dabf7;
+      --accent-purple: #9775fa;
+      --accent-orange: #ffa94d;
+      --accent-cyan: #22d3ee;
+      --gradient-green: linear-gradient(135deg, #00ff88 0%, #00cc6a 100%);
+      --gradient-red: linear-gradient(135deg, #ff4757 0%, #cc3a47 100%);
+      --gradient-blue: linear-gradient(135deg, #4dabf7 0%, #339af0 100%);
+      --glow-green: 0 0 20px rgba(0, 255, 136, 0.3);
+      --glow-red: 0 0 20px rgba(255, 71, 87, 0.3);
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Outfit', sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    .bg-pattern {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 0;
+      background: 
+        radial-gradient(ellipse at 20% 20%, rgba(0, 255, 136, 0.05) 0%, transparent 50%),
+        radial-gradient(ellipse at 80% 80%, rgba(77, 171, 247, 0.05) 0%, transparent 50%),
+        radial-gradient(ellipse at 50% 50%, rgba(151, 117, 250, 0.03) 0%, transparent 70%);
+    }
+
+    .grid-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 0;
+      background-image: 
+        linear-gradient(rgba(42, 47, 61, 0.1) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(42, 47, 61, 0.1) 1px, transparent 1px);
+      background-size: 50px 50px;
+    }
+
+    .app {
+      position: relative;
+      z-index: 1;
+      min-height: 100vh;
+    }
+
+    header {
+      background: rgba(22, 25, 35, 0.8);
+      backdrop-filter: blur(20px);
+      border-bottom: 1px solid var(--border);
+      padding: 1rem 2rem;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .header-content {
+      max-width: 1600px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .logo-icon {
+      width: 40px;
+      height: 40px;
+      background: var(--gradient-green);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.25rem;
+      box-shadow: var(--glow-green);
+    }
+
+    .logo-text {
+      font-size: 1.5rem;
+      font-weight: 700;
+      background: var(--gradient-green);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .logo-sub {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .connection-status {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.5rem 1rem;
+      background: var(--bg-tertiary);
+      border-radius: 8px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.85rem;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--accent-green);
+      animation: pulse 2s infinite;
+    }
+
+    .status-dot.disconnected {
+      background: var(--accent-red);
+      animation: none;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+
+    main {
+      max-width: 1600px;
+      margin: 0 auto;
+      padding: 2rem;
+      display: grid;
+      grid-template-columns: 1fr 400px;
+      gap: 2rem;
+    }
+
+    @media (max-width: 1200px) {
+      main {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 1rem;
+      margin-bottom: 2rem;
+    }
+
+    @media (max-width: 900px) {
+      .stats-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+    }
+
+    .stat-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.25rem;
+      transition: all 0.3s ease;
+    }
+
+    .stat-card:hover {
+      border-color: var(--accent-green);
+      transform: translateY(-2px);
+    }
+
+    .stat-label {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 0.5rem;
+    }
+
+    .stat-value {
+      font-size: 1.75rem;
+      font-weight: 700;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .stat-value.green { color: var(--accent-green); }
+    .stat-value.red { color: var(--accent-red); }
+    .stat-value.blue { color: var(--accent-blue); }
+    .stat-value.purple { color: var(--accent-purple); }
+
+    .modules-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1.5rem;
+      margin-bottom: 2rem;
+    }
+
+    @media (max-width: 1000px) {
+      .modules-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .module-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      overflow: hidden;
+      transition: all 0.3s ease;
+    }
+
+    .module-card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+    }
+
+    .module-header {
+      padding: 1.25rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .module-title {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .module-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.1rem;
+    }
+
+    .module-icon.token { background: rgba(151, 117, 250, 0.2); }
+    .module-icon.rug { background: rgba(255, 71, 87, 0.2); }
+    .module-icon.whale { background: rgba(34, 211, 238, 0.2); }
+
+    .module-name {
+      font-weight: 600;
+      font-size: 1rem;
+    }
+
+    .module-toggle {
+      position: relative;
+      width: 50px;
+      height: 26px;
+      background: var(--bg-tertiary);
+      border-radius: 13px;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      border: none;
+    }
+
+    .module-toggle.active {
+      background: var(--accent-green);
+    }
+
+    .module-toggle::after {
+      content: '';
+      position: absolute;
+      top: 3px;
+      left: 3px;
+      width: 20px;
+      height: 20px;
+      background: white;
+      border-radius: 50%;
+      transition: all 0.3s ease;
+    }
+
+    .module-toggle.active::after {
+      left: 27px;
+    }
+
+    .module-body {
+      padding: 1.25rem;
+    }
+
+    .module-stats {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 1rem;
+    }
+
+    .module-stat {
+      text-align: center;
+      padding: 0.75rem;
+      background: var(--bg-tertiary);
+      border-radius: 8px;
+    }
+
+    .module-stat-value {
+      font-size: 1.25rem;
+      font-weight: 600;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .module-stat-label {
+      font-size: 0.7rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      margin-top: 0.25rem;
+    }
+
+    .alerts-panel {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      overflow: hidden;
+      height: fit-content;
+      position: sticky;
+      top: 100px;
+    }
+
+    .alerts-header {
+      padding: 1.25rem;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .alerts-title {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-weight: 600;
+    }
+
+    .alerts-count {
+      background: var(--accent-red);
+      color: white;
+      font-size: 0.75rem;
+      padding: 0.15rem 0.5rem;
+      border-radius: 10px;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .alerts-list {
+      max-height: 600px;
+      overflow-y: auto;
+    }
+
+    .alert-item {
+      padding: 1rem 1.25rem;
+      border-bottom: 1px solid var(--border);
+      transition: background 0.2s ease;
+      animation: slideIn 0.3s ease;
+    }
+
+    @keyframes slideIn {
+      from {
+        opacity: 0;
+        transform: translateX(20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateX(0);
+      }
+    }
+
+    .alert-item:hover {
+      background: var(--bg-tertiary);
+    }
+
+    .alert-item:last-child {
+      border-bottom: none;
+    }
+
+    .alert-header {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .alert-icon {
+      font-size: 1rem;
+    }
+
+    .alert-type {
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      padding: 0.2rem 0.5rem;
+      border-radius: 4px;
+      font-weight: 600;
+    }
+
+    .alert-type.rug { background: rgba(255, 71, 87, 0.2); color: var(--accent-red); }
+    .alert-type.whale_buy { background: rgba(0, 255, 136, 0.2); color: var(--accent-green); }
+    .alert-type.whale_sell { background: rgba(255, 169, 77, 0.2); color: var(--accent-orange); }
+    .alert-type.new_token { background: rgba(151, 117, 250, 0.2); color: var(--accent-purple); }
+    .alert-type.suspicious { background: rgba(255, 169, 77, 0.2); color: var(--accent-orange); }
+
+    .alert-time {
+      font-size: 0.7rem;
+      color: var(--text-muted);
+      margin-left: auto;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .alert-title {
+      font-weight: 600;
+      font-size: 0.9rem;
+      margin-bottom: 0.25rem;
+    }
+
+    .alert-message {
+      font-size: 0.8rem;
+      color: var(--text-secondary);
+      font-family: 'JetBrains Mono', monospace;
+      word-break: break-all;
+    }
+
+    .tokens-section {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      overflow: hidden;
+    }
+
+    .section-header {
+      padding: 1.25rem;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .section-title {
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .tokens-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    .tokens-table th {
+      text-align: left;
+      padding: 1rem 1.25rem;
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .tokens-table td {
+      padding: 1rem 1.25rem;
+      border-bottom: 1px solid var(--border);
+      font-size: 0.9rem;
+    }
+
+    .tokens-table tr:hover {
+      background: var(--bg-tertiary);
+    }
+
+    .token-name {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .token-avatar {
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      background: var(--gradient-blue);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 600;
+      font-size: 0.8rem;
+    }
+
+    .token-symbol {
+      font-weight: 600;
+    }
+
+    .token-mint {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .suspicion-badge {
+      display: inline-block;
+      padding: 0.25rem 0.5rem;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+
+    .suspicion-badge.low { background: rgba(0, 255, 136, 0.2); color: var(--accent-green); }
+    .suspicion-badge.medium { background: rgba(255, 169, 77, 0.2); color: var(--accent-orange); }
+    .suspicion-badge.high { background: rgba(255, 71, 87, 0.2); color: var(--accent-red); }
+
+    .empty-state {
+      text-align: center;
+      padding: 3rem;
+      color: var(--text-muted);
+    }
+
+    .empty-state-icon {
+      font-size: 3rem;
+      margin-bottom: 1rem;
+      opacity: 0.5;
+    }
+
+    ::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: var(--bg-tertiary);
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: var(--border);
+      border-radius: 3px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: var(--text-muted);
+    }
+
+    .monitor-badge {
+      background: rgba(0, 255, 136, 0.1);
+      border: 1px solid var(--accent-green);
+      color: var(--accent-green);
+      padding: 0.25rem 0.75rem;
+      border-radius: 20px;
+      font-size: 0.7rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+  </style>
+</head>
+<body>
+  <div class="bg-pattern"></div>
+  <div class="grid-overlay"></div>
+  
+  <div class="app">
+    <header>
+      <div class="header-content">
+        <div class="logo">
+          <div class="logo-icon">🛡️</div>
+          <div>
+            <div class="logo-text">PumpGuard</div>
+            <div class="logo-sub">pump.fun monitoring suite</div>
+          </div>
+        </div>
+        <div style="display: flex; align-items: center; gap: 1rem;">
+          <span class="monitor-badge">Monitor Only</span>
+          <div class="connection-status">
+            <div class="status-dot" id="statusDot"></div>
+            <span id="statusText">Connecting...</span>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <main>
+      <div class="main-content">
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-label">Tokens Detected</div>
+            <div class="stat-value green" id="tokensDetected">0</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Tokens Watched</div>
+            <div class="stat-value blue" id="tokensWatched">0</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Rugs Detected</div>
+            <div class="stat-value red" id="rugsDetected">0</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Whales Tracked</div>
+            <div class="stat-value purple" id="whalesTracked">0</div>
+          </div>
+        </div>
+
+        <div class="modules-grid">
+          <div class="module-card">
+            <div class="module-header">
+              <div class="module-title">
+                <div class="module-icon token">🆕</div>
+                <span class="module-name">Token Monitor</span>
+              </div>
+              <button class="module-toggle" id="tokenToggle" onclick="toggleModule('token')"></button>
+            </div>
+            <div class="module-body">
+              <div class="module-stats">
+                <div class="module-stat">
+                  <div class="module-stat-value" id="tokenDetectedCount">0</div>
+                  <div class="module-stat-label">Detected</div>
+                </div>
+                <div class="module-stat">
+                  <div class="module-stat-value" id="tokenAlertCount">0</div>
+                  <div class="module-stat-label">Alerts Sent</div>
+                </div>
+                <div class="module-stat">
+                  <div class="module-stat-value" id="tokenTrackedCount">0</div>
+                  <div class="module-stat-label">Tracked</div>
+                </div>
+                <div class="module-stat">
+                  <div class="module-stat-value" id="tokenRunning">-</div>
+                  <div class="module-stat-label">Status</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="module-card">
+            <div class="module-header">
+              <div class="module-title">
+                <div class="module-icon rug">🚨</div>
+                <span class="module-name">Rug Detector</span>
+              </div>
+              <button class="module-toggle" id="rugToggle" onclick="toggleModule('rug')"></button>
+            </div>
+            <div class="module-body">
+              <div class="module-stats">
+                <div class="module-stat">
+                  <div class="module-stat-value" id="rugWatched">0</div>
+                  <div class="module-stat-label">Watching</div>
+                </div>
+                <div class="module-stat">
+                  <div class="module-stat-value" id="rugDetected">0</div>
+                  <div class="module-stat-label">Rugs Found</div>
+                </div>
+                <div class="module-stat">
+                  <div class="module-stat-value" id="rugAlerts">0</div>
+                  <div class="module-stat-label">Alerts Sent</div>
+                </div>
+                <div class="module-stat">
+                  <div class="module-stat-value" id="rugRunning">-</div>
+                  <div class="module-stat-label">Status</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="module-card">
+            <div class="module-header">
+              <div class="module-title">
+                <div class="module-icon whale">🐋</div>
+                <span class="module-name">Whale Watcher</span>
+              </div>
+              <button class="module-toggle" id="whaleToggle" onclick="toggleModule('whale')"></button>
+            </div>
+            <div class="module-body">
+              <div class="module-stats">
+                <div class="module-stat">
+                  <div class="module-stat-value" id="whaleWallets">0</div>
+                  <div class="module-stat-label">Wallets</div>
+                </div>
+                <div class="module-stat">
+                  <div class="module-stat-value" id="whaleIdentified">0</div>
+                  <div class="module-stat-label">Whales</div>
+                </div>
+                <div class="module-stat">
+                  <div class="module-stat-value" id="whaleBuys">0</div>
+                  <div class="module-stat-label">Buy Alerts</div>
+                </div>
+                <div class="module-stat">
+                  <div class="module-stat-value" id="whaleSells">0</div>
+                  <div class="module-stat-label">Sell Alerts</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="tokens-section">
+          <div class="section-header">
+            <div class="section-title">
+              <span>📊</span>
+              <span>Watched Tokens</span>
+            </div>
+          </div>
+          <table class="tokens-table">
+            <thead>
+              <tr>
+                <th>Token</th>
+                <th>Liquidity</th>
+                <th>Suspicion</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="tokensTableBody">
+              <tr>
+                <td colspan="4">
+                  <div class="empty-state">
+                    <div class="empty-state-icon">📭</div>
+                    <div>No tokens being watched yet</div>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="alerts-panel">
+        <div class="alerts-header">
+          <div class="alerts-title">
+            <span>🔔</span>
+            <span>Live Alerts</span>
+          </div>
+          <span class="alerts-count" id="alertsCount">0</span>
+        </div>
+        <div class="alerts-list" id="alertsList">
+          <div class="empty-state">
+            <div class="empty-state-icon">🔕</div>
+            <div>No alerts yet</div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    let ws;
+    let reconnectAttempts = 0;
+    let alerts = [];
+    const moduleStates = { token: false, rug: false, whale: false };
+
+    function connect() {
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      ws = new WebSocket(`${protocol}//${window.location.host}`);
+
+      ws.onopen = () => {
+        document.getElementById('statusDot').classList.remove('disconnected');
+        document.getElementById('statusText').textContent = 'Connected';
+        reconnectAttempts = 0;
+      };
+
+      ws.onclose = () => {
+        document.getElementById('statusDot').classList.add('disconnected');
+        document.getElementById('statusText').textContent = 'Disconnected';
+        
+        const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 30000);
+        reconnectAttempts++;
+        setTimeout(connect, delay);
+      };
+
+      ws.onerror = (error) => {
+        console.error('WebSocket error:', error);
+      };
+
+      ws.onmessage = (event) => {
+        const message = JSON.parse(event.data);
+        handleMessage(message);
+      };
+    }
+
+    function handleMessage(message) {
+      switch (message.type) {
+        case 'init':
+          updateStats(message.data.stats);
+          message.data.recentAlerts.forEach(alert => addAlert(alert, false));
+          break;
+        case 'alert':
+          addAlert(message.data, true);
+          break;
+        case 'stats':
+          updateStats(message.data);
+          break;
+      }
+    }
+
+    function updateStats(stats) {
+      if (stats.tokenMonitor) {
+        document.getElementById('tokensDetected').textContent = stats.tokenMonitor.tokensDetected || 0;
+        document.getElementById('tokenDetectedCount').textContent = stats.tokenMonitor.tokensDetected || 0;
+        document.getElementById('tokenAlertCount').textContent = stats.tokenMonitor.alertsSent || 0;
+        document.getElementById('tokenTrackedCount').textContent = stats.tokenMonitor.tokensTracked || 0;
+        document.getElementById('tokenRunning').textContent = stats.tokenMonitor.isRunning ? '✓' : '✗';
+        
+        moduleStates.token = stats.tokenMonitor.isRunning;
+        document.getElementById('tokenToggle').classList.toggle('active', stats.tokenMonitor.isRunning);
+      }
+
+      if (stats.rugDetector) {
+        document.getElementById('tokensWatched').textContent = stats.rugDetector.watchedTokens || 0;
+        document.getElementById('rugsDetected').textContent = stats.rugDetector.rugsDetected || 0;
+        document.getElementById('rugWatched').textContent = stats.rugDetector.watchedTokens || 0;
+        document.getElementById('rugDetected').textContent = stats.rugDetector.rugsDetected || 0;
+        document.getElementById('rugAlerts').textContent = stats.rugDetector.alertsSent || 0;
+        document.getElementById('rugRunning').textContent = stats.rugDetector.isRunning ? '✓' : '✗';
+        
+        moduleStates.rug = stats.rugDetector.isRunning;
+        document.getElementById('rugToggle').classList.toggle('active', stats.rugDetector.isRunning);
+      }
+
+      if (stats.whaleWatcher) {
+        document.getElementById('whalesTracked').textContent = stats.whaleWatcher.whalesIdentified || 0;
+        document.getElementById('whaleWallets').textContent = stats.whaleWatcher.watchedWallets || 0;
+        document.getElementById('whaleIdentified').textContent = stats.whaleWatcher.whalesIdentified || 0;
+        document.getElementById('whaleBuys').textContent = stats.whaleWatcher.accumulationAlerts || 0;
+        document.getElementById('whaleSells').textContent = stats.whaleWatcher.dumpAlerts || 0;
+        
+        moduleStates.whale = stats.whaleWatcher.isRunning;
+        document.getElementById('whaleToggle').classList.toggle('active', stats.whaleWatcher.isRunning);
+      }
+    }
+
+    function addAlert(alert, animate = true) {
+      alerts.unshift(alert);
+      if (alerts.length > 100) alerts = alerts.slice(0, 100);
+      
+      document.getElementById('alertsCount').textContent = alerts.length;
+      renderAlerts();
+    }
+
+    function renderAlerts() {
+      const container = document.getElementById('alertsList');
+      
+      if (alerts.length === 0) {
+        container.innerHTML = `
+          <div class="empty-state">
+            <div class="empty-state-icon">🔕</div>
+            <div>No alerts yet</div>
+          </div>
+        `;
+        return;
+      }
+
+      container.innerHTML = alerts.map(alert => `
+        <div class="alert-item">
+          <div class="alert-header">
+            <span class="alert-icon">${getAlertIcon(alert.type)}</span>
+            <span class="alert-type ${alert.type}">${alert.type.replace('_', ' ')}</span>
+            <span class="alert-time">${formatTime(alert.timestamp)}</span>
+          </div>
+          <div class="alert-title">${escapeHtml(alert.title)}</div>
+          <div class="alert-message">${escapeHtml(alert.message)}</div>
+        </div>
+      `).join('');
+    }
+
+    function getAlertIcon(type) {
+      const icons = {
+        'rug': '🚨',
+        'whale_buy': '🐋📈',
+        'whale_sell': '🐋📉',
+        'new_token': '🆕',
+        'suspicious': '⚠️',
+        'success': '✅',
+        'error': '❌'
+      };
+      return icons[type] || '📢';
+    }
+
+    function formatTime(timestamp) {
+      const date = new Date(timestamp);
+      return date.toLocaleTimeString();
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    async function toggleModule(module) {
+      const isActive = moduleStates[module];
+      const action = isActive ? 'stop' : 'start';
+      
+      const endpoints = {
+        token: `/api/tokens/${action}`,
+        rug: `/api/rug/${action}`,
+        whale: `/api/whales/${action}`
+      };
+
+      try {
+        const response = await fetch(endpoints[module], { method: 'POST' });
+        const data = await response.json();
+        
+        if (data.success) {
+          moduleStates[module] = !isActive;
+          document.getElementById(`${module}Toggle`).classList.toggle('active', !isActive);
+        }
+      } catch (error) {
+        console.error('Failed to toggle module:', error);
+      }
+    }
+
+    async function fetchStats() {
+      try {
+        const response = await fetch('/api/stats');
+        const stats = await response.json();
+        updateStats(stats);
+      } catch (error) {
+        console.error('Failed to fetch stats:', error);
+      }
+    }
+
+    connect();
+    setInterval(fetchStats, 5000);
+  </script>
+</body>
+</html>

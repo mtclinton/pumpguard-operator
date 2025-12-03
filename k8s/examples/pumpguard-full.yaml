@@ -1,0 +1,97 @@
+# Full PumpGuard deployment with trading enabled
+---
+# First, create the secrets
+apiVersion: v1
+kind: Secret
+metadata:
+  name: pumpguard-wallet
+  namespace: default
+type: Opaque
+stringData:
+  privateKey: "YOUR_BASE58_PRIVATE_KEY_HERE"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: pumpguard-telegram
+  namespace: default
+type: Opaque
+stringData:
+  botToken: "YOUR_TELEGRAM_BOT_TOKEN"
+  chatId: "YOUR_TELEGRAM_CHAT_ID"
+---
+# PumpGuard instance with full configuration
+apiVersion: pumpguard.fun/v1
+kind: PumpGuard
+metadata:
+  name: pumpguard-trader
+  namespace: default
+spec:
+  # Premium RPC recommended for trading
+  rpcUrl: "https://mainnet.helius-rpc.com/?api-key=YOUR_API_KEY"
+  wsUrl: "wss://mainnet.helius-rpc.com/?api-key=YOUR_API_KEY"
+  
+  # Reference to wallet secret
+  walletSecretRef:
+    name: pumpguard-wallet
+    key: privateKey
+  
+  modules:
+    sniper:
+      enabled: true
+      maxBuyAmountSol: 0.05
+      slippagePercent: 20
+      minLiquiditySol: 1
+      maxLiquiditySol: 50
+      # Blacklist known scam creators
+      blacklistedCreators:
+        - "ScamWa11et111111111111111111111111111111111"
+      # Or whitelist only trusted creators
+      # whitelistedCreators:
+      #   - "TrustedCreator11111111111111111111111111111"
+    
+    rugDetector:
+      enabled: true
+      autoSellOnRug: true
+      lpRemovalThresholdPercent: 40
+      suspiciousSellPercent: 8
+      devWalletSellAlert: true
+    
+    whaleWatcher:
+      enabled: true
+      whaleThresholdSol: 25
+      alertOnAccumulation: true
+      alertOnDump: true
+      watchedWallets:
+        - address: "KnownWha1e111111111111111111111111111111111"
+          label: "Smart Money Whale 1"
+        - address: "KnownWha1e222222222222222222222222222222222"
+          label: "Degen Trader"
+  
+  alerting:
+    telegram:
+      enabled: true
+      secretRef:
+        name: pumpguard-telegram
+        botTokenKey: botToken
+        chatIdKey: chatId
+    webhook:
+      enabled: false
+      # url: "https://your-webhook-endpoint.com/alerts"
+  
+  dashboard:
+    enabled: true
+    port: 3000
+    ingress:
+      enabled: true
+      host: pumpguard.yourdomain.com
+      tls: true
+  
+  resources:
+    requests:
+      cpu: "200m"
+      memory: "384Mi"
+    limits:
+      cpu: "1000m"
+      memory: "768Mi"
+

@@ -1,0 +1,25 @@
+# Monitor a specific token
+apiVersion: pumpguard.fun/v1
+kind: TokenMonitor
+metadata:
+  name: monitor-example-token
+  namespace: default
+spec:
+  # The token mint address
+  mint: "TokenMintAddress111111111111111111111111111"
+  symbol: "EXAMPLE"
+  name: "Example Token"
+  
+  # Reference to the PumpGuard instance that should monitor this
+  pumpguardRef: pumpguard-trader
+  
+  # Monitor only or actively trade
+  watchMode: "monitor"  # or "trade"
+  
+  # Auto-sell configuration (only applies if watchMode is "trade")
+  autoSell:
+    enabled: true
+    takeProfitPercent: 100  # Sell at 2x
+    stopLossPercent: 30     # Sell if down 30%
+    rugDetection: true      # Auto-sell on rug detection
+

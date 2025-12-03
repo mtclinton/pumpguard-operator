@@ -1,0 +1,43 @@
+# Basic PumpGuard deployment - monitor only (no trading)
+apiVersion: pumpguard.fun/v1
+kind: PumpGuard
+metadata:
+  name: pumpguard-monitor
+  namespace: default
+spec:
+  # Use a premium RPC for better performance
+  rpcUrl: "https://api.mainnet-beta.solana.com"
+  wsUrl: "wss://api.mainnet-beta.solana.com"
+  
+  modules:
+    sniper:
+      enabled: true
+      maxBuyAmountSol: 0.1
+      slippagePercent: 15
+      minLiquiditySol: 0.5
+      maxLiquiditySol: 100
+    
+    rugDetector:
+      enabled: true
+      autoSellOnRug: false  # Disabled - no wallet configured
+      lpRemovalThresholdPercent: 50
+      suspiciousSellPercent: 10
+    
+    whaleWatcher:
+      enabled: true
+      whaleThresholdSol: 50
+      alertOnAccumulation: true
+      alertOnDump: true
+  
+  dashboard:
+    enabled: true
+    port: 3000
+  
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "256Mi"
+    limits:
+      cpu: "500m"
+      memory: "512Mi"
+
