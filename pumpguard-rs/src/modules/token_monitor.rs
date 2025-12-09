@@ -5,12 +5,11 @@ use chrono::Utc;
 use dashmap::DashMap;
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
-use solana_sdk::pubkey::Pubkey;
 use solana_transaction_status::{
     EncodedConfirmedTransactionWithStatusMeta, EncodedTransaction, UiMessage,
     option_serializer::OptionSerializer,
 };
-use std::collections::HashSet;
+use std::collections::{HashSet, VecDeque};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use tokio::sync::broadcast;
@@ -41,15 +40,32 @@ pub struct TokenFilters {
     pub max_liquidity_sol: f64,
     pub blacklisted_creators: HashSet<String>,
     pub whitelisted_creators: HashSet<String>,
+    pub max_alerts_per_minute: u32,
+    pub alert_new_tokens: bool,
+}
+
+impl TokenFilters {
+    pub fn from_config(config: &Config) -> Self {
+        Self {
+            min_liquidity_sol: config.min_liquidity_sol,
+            max_liquidity_sol: f64::INFINITY,
+            blacklisted_creators: HashSet::new(),
+            whitelisted_creators: HashSet::new(),
+            max_alerts_per_minute: config.max_alerts_per_minute,
+            alert_new_tokens: config.alert_new_tokens,
+        }
+    }
 }
 
 impl Default for TokenFilters {
     fn default() -> Self {
         Self {
-            min_liquidity_sol: 0.0,
+            min_liquidity_sol: 1.0, // Default: 1 SOL minimum
             max_liquidity_sol: f64::INFINITY,
             blacklisted_creators: HashSet::new(),
             whitelisted_creators: HashSet::new(),
+            max_alerts_per_minute: 10, // Default: 10 alerts/min
+            alert_new_tokens: true,
         }
     }
 }
@@ -60,8 +76,49 @@ impl Default for TokenFilters {
 pub struct TokenMonitorStats {
     pub tokens_detected: u64,
     pub alerts_sent: u64,
+    pub alerts_skipped: u64,
     pub tokens_tracked: usize,
     pub is_running: bool,
+}
+
+/// Rate limiter for alerts
+struct AlertRateLimiter {
+    timestamps: VecDeque<i64>,
+    max_per_minute: u32,
+}
+
+impl AlertRateLimiter {
+    fn new(max_per_minute: u32) -> Self {
+        Self {
+            timestamps: VecDeque::with_capacity(100),
+            max_per_minute,
+        }
+    }
+
+    fn can_send(&mut self) -> bool {
+        if self.max_per_minute == 0 {
+            return true; // Unlimited
+        }
+
+        let now = chrono::Utc::now().timestamp();
+        let one_minute_ago = now - 60;
+
+        // Remove old timestamps
+        while let Some(&ts) = self.timestamps.front() {
+            if ts < one_minute_ago {
+                self.timestamps.pop_front();
+            } else {
+                break;
+            }
+        }
+
+        if self.timestamps.len() < self.max_per_minute as usize {
+            self.timestamps.push_back(now);
+            true
+        } else {
+            false
+        }
+    }
 }
 
 /// Token Monitor module
@@ -74,9 +131,11 @@ pub struct TokenMonitor {
     is_running: Arc<AtomicBool>,
     detected_tokens: Arc<DashMap<String, DetectedToken>>,
     filters: Arc<RwLock<TokenFilters>>,
+    rate_limiter: Arc<RwLock<AlertRateLimiter>>,
 
     tokens_detected: Arc<AtomicU64>,
     alerts_sent: Arc<AtomicU64>,
+    alerts_skipped: Arc<AtomicU64>,
 
     new_token_sender: broadcast::Sender<DetectedToken>,
 }
@@ -89,7 +148,17 @@ impl TokenMonitor {
         alerts: Arc<AlertService>,
         database: Arc<DatabaseService>,
     ) -> Self {
-        let (new_token_sender, _) = broadcast::channel(100);
+        let (new_token_sender, _) = broadcast::channel(10000);
+        let filters = TokenFilters::from_config(&config);
+        let rate_limiter = AlertRateLimiter::new(config.max_alerts_per_minute);
+
+        info!(
+            target: "TOKEN_MONITOR",
+            "Filters: min_liquidity={} SOL, max_alerts/min={}, alerts_enabled={}",
+            filters.min_liquidity_sol,
+            filters.max_alerts_per_minute,
+            filters.alert_new_tokens
+        );
 
         Self {
             config,
@@ -98,9 +167,11 @@ impl TokenMonitor {
             database,
             is_running: Arc::new(AtomicBool::new(false)),
             detected_tokens: Arc::new(DashMap::new()),
-            filters: Arc::new(RwLock::new(TokenFilters::default())),
+            filters: Arc::new(RwLock::new(filters)),
+            rate_limiter: Arc::new(RwLock::new(rate_limiter)),
             tokens_detected: Arc::new(AtomicU64::new(0)),
             alerts_sent: Arc::new(AtomicU64::new(0)),
+            alerts_skipped: Arc::new(AtomicU64::new(0)),
             new_token_sender,
         }
     }
@@ -129,8 +200,10 @@ impl TokenMonitor {
         let database = Arc::clone(&self.database);
         let detected_tokens = Arc::clone(&self.detected_tokens);
         let filters = Arc::clone(&self.filters);
+        let rate_limiter = Arc::clone(&self.rate_limiter);
         let tokens_detected = Arc::clone(&self.tokens_detected);
         let alerts_sent = Arc::clone(&self.alerts_sent);
+        let alerts_skipped = Arc::clone(&self.alerts_skipped);
         let new_token_sender = self.new_token_sender.clone();
 
         tokio::spawn(async move {
@@ -155,8 +228,10 @@ impl TokenMonitor {
                                 &database,
                                 &detected_tokens,
                                 &filters,
+                                &rate_limiter,
                                 &tokens_detected,
                                 &alerts_sent,
+                                &alerts_skipped,
                                 &new_token_sender,
                                 &log_event.signature,
                             )
@@ -193,8 +268,10 @@ impl TokenMonitor {
         database: &Arc<DatabaseService>,
         detected_tokens: &Arc<DashMap<String, DetectedToken>>,
         filters: &Arc<RwLock<TokenFilters>>,
+        rate_limiter: &Arc<RwLock<AlertRateLimiter>>,
         tokens_detected: &Arc<AtomicU64>,
         alerts_sent: &Arc<AtomicU64>,
+        alerts_skipped: &Arc<AtomicU64>,
         new_token_sender: &broadcast::Sender<DetectedToken>,
         signature: &str,
     ) -> Result<()> {
@@ -211,8 +288,13 @@ impl TokenMonitor {
             None => return Ok(()),
         };
 
-        // Check filters
-        {
+        // Check if we already have this token (duplicate detection)
+        if detected_tokens.contains_key(&token_info.mint) {
+            return Ok(());
+        }
+
+        // Check filters and get alert settings
+        let (should_alert, alert_enabled) = {
             let filters = filters.read();
 
             // Check blacklist
@@ -228,26 +310,15 @@ impl TokenMonitor {
             }
 
             // Check liquidity bounds
-            if token_info.initial_liquidity < filters.min_liquidity_sol
-                || token_info.initial_liquidity > filters.max_liquidity_sol
-            {
-                return Ok(());
-            }
-        }
+            let meets_liquidity = token_info.initial_liquidity >= filters.min_liquidity_sol
+                && token_info.initial_liquidity <= filters.max_liquidity_sol;
+
+            (meets_liquidity, filters.alert_new_tokens)
+        };
 
         tokens_detected.fetch_add(1, Ordering::SeqCst);
 
-        info!(
-            target: "TOKEN_MONITOR",
-            "🆕 New token: {} ({}) - Mint: {} - Creator: {} - Liquidity: {:.2} SOL",
-            token_info.name,
-            token_info.symbol,
-            SolanaService::shorten_address(&token_info.mint, 4),
-            SolanaService::shorten_address(&token_info.creator, 4),
-            token_info.initial_liquidity
-        );
-
-        // Save to database
+        // Save to database (always save, regardless of filters)
         let _ = database.save_token(&TokenRecord {
             mint: token_info.mint.clone(),
             name: token_info.name.clone(),
@@ -272,20 +343,43 @@ impl TokenMonitor {
             }
         }
 
-        // Send alert
-        alerts_sent.fetch_add(1, Ordering::SeqCst);
-        let _ = alerts
-            .alert_new_token(&TokenAlertInfo {
-                mint: token_info.mint.clone(),
-                name: token_info.name.clone(),
-                symbol: token_info.symbol.clone(),
-                creator: token_info.creator.clone(),
-                initial_liquidity: Some(token_info.initial_liquidity),
-            })
-            .await;
+        // Broadcast new token event (for rug detector linking)
+        let _ = new_token_sender.send(token_info.clone());
 
-        // Broadcast new token event
-        let _ = new_token_sender.send(token_info);
+        // Only send alert if it passes filters and alerts are enabled
+        if should_alert && alert_enabled {
+            // Check rate limiter
+            let can_send = {
+                let mut limiter = rate_limiter.write();
+                limiter.can_send()
+            };
+
+            if can_send {
+                alerts_sent.fetch_add(1, Ordering::SeqCst);
+
+                info!(
+                    target: "TOKEN_MONITOR",
+                    "🆕 New token: {} ({}) - Mint: {} - Creator: {} - Liquidity: {:.2} SOL",
+                    token_info.name,
+                    token_info.symbol,
+                    SolanaService::shorten_address(&token_info.mint, 4),
+                    SolanaService::shorten_address(&token_info.creator, 4),
+                    token_info.initial_liquidity
+                );
+
+                let _ = alerts
+                    .alert_new_token(&TokenAlertInfo {
+                        mint: token_info.mint.clone(),
+                        name: token_info.name.clone(),
+                        symbol: token_info.symbol.clone(),
+                        creator: token_info.creator.clone(),
+                        initial_liquidity: Some(token_info.initial_liquidity),
+                    })
+                    .await;
+            } else {
+                alerts_skipped.fetch_add(1, Ordering::SeqCst);
+            }
+        }
 
         Ok(())
     }
@@ -389,6 +483,7 @@ impl TokenMonitor {
         TokenMonitorStats {
             tokens_detected: self.tokens_detected.load(Ordering::SeqCst),
             alerts_sent: self.alerts_sent.load(Ordering::SeqCst),
+            alerts_skipped: self.alerts_skipped.load(Ordering::SeqCst),
             tokens_tracked: self.detected_tokens.len(),
             is_running: self.is_running.load(Ordering::SeqCst),
         }
@@ -432,8 +527,10 @@ impl Clone for TokenMonitor {
             is_running: Arc::clone(&self.is_running),
             detected_tokens: Arc::clone(&self.detected_tokens),
             filters: Arc::clone(&self.filters),
+            rate_limiter: Arc::clone(&self.rate_limiter),
             tokens_detected: Arc::clone(&self.tokens_detected),
             alerts_sent: Arc::clone(&self.alerts_sent),
+            alerts_skipped: Arc::clone(&self.alerts_skipped),
             new_token_sender: self.new_token_sender.clone(),
         }
     }

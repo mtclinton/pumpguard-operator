@@ -16,6 +16,11 @@ pub struct Config {
     pub telegram_bot_token: Option<String>,
     pub telegram_chat_id: Option<String>,
 
+    // Token Monitor - Alert Filtering
+    pub min_liquidity_sol: f64,           // Minimum liquidity to trigger alerts
+    pub max_alerts_per_minute: u32,       // Rate limit for alerts (0 = unlimited)
+    pub alert_new_tokens: bool,           // Enable/disable new token alerts
+
     // Whale Watcher
     pub whale_threshold_sol: f64,
     pub alert_on_accumulation: bool,
@@ -46,6 +51,19 @@ impl Config {
 
             telegram_bot_token: env::var("TELEGRAM_BOT_TOKEN").ok(),
             telegram_chat_id: env::var("TELEGRAM_CHAT_ID").ok(),
+
+            // Token monitor filtering - reduce alert noise
+            min_liquidity_sol: env::var("MIN_LIQUIDITY_SOL")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(1.0), // Default: only alert for tokens with >= 1 SOL liquidity
+            max_alerts_per_minute: env::var("MAX_ALERTS_PER_MINUTE")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(10), // Default: max 10 alerts per minute (0 = unlimited)
+            alert_new_tokens: env::var("ALERT_NEW_TOKENS")
+                .map(|v| v != "false")
+                .unwrap_or(true),
 
             whale_threshold_sol: env::var("WHALE_THRESHOLD_SOL")
                 .ok()

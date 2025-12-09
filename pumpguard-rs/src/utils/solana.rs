@@ -64,6 +64,7 @@ impl SolanaService {
     pub async fn start_log_subscription(&self) -> Result<()> {
         use futures_util::{SinkExt, StreamExt};
         use tokio_tungstenite::{connect_async, tungstenite::Message};
+        use std::sync::atomic::{AtomicU64, Ordering};
 
         let ws_url = self.config.ws_url.clone();
         let program_id = self.pump_program_id.to_string();
@@ -71,10 +72,16 @@ impl SolanaService {
 
         // Spawn WebSocket connection handler
         tokio::spawn(async move {
+            let mut reconnect_delay = 5;
+            let message_count = Arc::new(AtomicU64::new(0));
+
             loop {
                 match connect_async(&ws_url).await {
-                    Ok((mut ws_stream, _)) => {
+                    Ok((ws_stream, _)) => {
                         info!(target: "SOLANA", "WebSocket connected to {}", ws_url);
+                        reconnect_delay = 5; // Reset delay on successful connection
+
+                        let (mut write, mut read) = ws_stream.split();
 
                         // Subscribe to program logs
                         let subscribe_msg = serde_json::json!({
@@ -87,17 +94,51 @@ impl SolanaService {
                             ]
                         });
 
-                        if let Err(e) = ws_stream.send(Message::Text(subscribe_msg.to_string())).await {
+                        if let Err(e) = write.send(Message::Text(subscribe_msg.to_string())).await {
                             error!(target: "SOLANA", "Failed to send subscribe message: {}", e);
                             continue;
                         }
 
                         info!(target: "SOLANA", "Subscribed to pump.fun program logs");
 
-                        while let Some(msg) = ws_stream.next().await {
+                        // Keepalive ping task
+                        let msg_count = Arc::clone(&message_count);
+                        let ping_task = tokio::spawn(async move {
+                            let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(30));
+                            loop {
+                                interval.tick().await;
+                                let count = msg_count.load(Ordering::SeqCst);
+                                info!(target: "SOLANA", "WebSocket keepalive - {} messages received", count);
+                            }
+                        });
+
+                        // Message handling loop
+                        let mut last_message_time = std::time::Instant::now();
+                        
+                        loop {
+                            // Use timeout to detect stale connections
+                            let msg = tokio::time::timeout(
+                                tokio::time::Duration::from_secs(120), // 2 minute timeout
+                                read.next()
+                            ).await;
+
                             match msg {
-                                Ok(Message::Text(text)) => {
+                                Ok(Some(Ok(Message::Text(text)))) => {
+                                    last_message_time = std::time::Instant::now();
+                                    
                                     if let Ok(json) = serde_json::from_str::<serde_json::Value>(&text) {
+                                        // Check for subscription confirmation
+                                        if json.get("result").is_some() {
+                                            info!(target: "SOLANA", "Subscription confirmed");
+                                            continue;
+                                        }
+                                        
+                                        // Check for errors
+                                        if let Some(error) = json.get("error") {
+                                            error!(target: "SOLANA", "RPC error: {:?}", error);
+                                            continue;
+                                        }
+
                                         if let Some(result) = json.get("params").and_then(|p| p.get("result")) {
                                             if let Some(value) = result.get("value") {
                                                 let signature = value
@@ -117,35 +158,55 @@ impl SolanaService {
                                                     .unwrap_or_default();
 
                                                 if !signature.is_empty() {
+                                                    message_count.fetch_add(1, Ordering::SeqCst);
                                                     let _ = sender.send(LogEvent { signature, logs });
                                                 }
                                             }
                                         }
                                     }
                                 }
-                                Ok(Message::Ping(data)) => {
-                                    let _ = ws_stream.send(Message::Pong(data)).await;
+                                Ok(Some(Ok(Message::Ping(data)))) => {
+                                    last_message_time = std::time::Instant::now();
+                                    // Note: pong is sent via write half, but we're in read half
+                                    // Most WS implementations auto-respond to pings
                                 }
-                                Ok(Message::Close(_)) => {
-                                    warn!(target: "SOLANA", "WebSocket closed, reconnecting...");
+                                Ok(Some(Ok(Message::Pong(_)))) => {
+                                    last_message_time = std::time::Instant::now();
+                                }
+                                Ok(Some(Ok(Message::Close(frame)))) => {
+                                    warn!(target: "SOLANA", "WebSocket closed by server: {:?}", frame);
                                     break;
                                 }
-                                Err(e) => {
+                                Ok(Some(Err(e))) => {
                                     error!(target: "SOLANA", "WebSocket error: {}", e);
                                     break;
+                                }
+                                Ok(None) => {
+                                    warn!(target: "SOLANA", "WebSocket stream ended");
+                                    break;
+                                }
+                                Err(_) => {
+                                    // Timeout - check if connection is stale
+                                    if last_message_time.elapsed() > tokio::time::Duration::from_secs(120) {
+                                        warn!(target: "SOLANA", "WebSocket connection stale (no messages for 2 min), reconnecting...");
+                                        break;
+                                    }
                                 }
                                 _ => {}
                             }
                         }
+
+                        ping_task.abort();
                     }
                     Err(e) => {
                         error!(target: "SOLANA", "Failed to connect WebSocket: {}", e);
                     }
                 }
 
-                // Wait before reconnecting
-                tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
-                info!(target: "SOLANA", "Reconnecting WebSocket...");
+                // Wait before reconnecting with exponential backoff (max 60s)
+                info!(target: "SOLANA", "Reconnecting WebSocket in {} seconds...", reconnect_delay);
+                tokio::time::sleep(tokio::time::Duration::from_secs(reconnect_delay)).await;
+                reconnect_delay = (reconnect_delay * 2).min(60);
             }
         });
 
