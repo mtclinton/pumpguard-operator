@@ -4,8 +4,6 @@
 
 PumpGuard monitors pump.fun in real-time to detect new tokens, rug pulls, and whale movements. This is a **monitoring-only** tool - no wallet or trading functionality.
 
-> **Note:** PumpGuard has been rewritten in Rust for improved performance. The Rust implementation is in the `pumpguard-rs/` directory. The original Node.js version remains in `src/` for reference.
-
 ## Features
 
 ### 🆕 Token Monitor
@@ -33,7 +31,7 @@ PumpGuard monitors pump.fun in real-time to detect new tokens, rug pulls, and wh
 - Statistics and metrics
 - Prometheus metrics endpoint
 
-## Quick Start (Rust)
+## Quick Start
 
 ```bash
 cd pumpguard-rs
@@ -48,22 +46,9 @@ cargo run --release
 
 The dashboard will be available at `http://localhost:3000`
 
-## Quick Start (Node.js - Legacy)
-
-```bash
-# Install dependencies
-npm install
-
-# Copy environment configuration
-cp env.example .env
-
-# Start monitoring
-npm start
-```
-
 ## Configuration
 
-Edit `.env` with your settings:
+Edit `pumpguard-rs/.env` with your settings:
 
 ```env
 # Solana RPC (read-only)
@@ -84,7 +69,7 @@ SUSPICIOUS_SELL_PERCENT=10
 # Dashboard
 DASHBOARD_PORT=3000
 
-# Rust only: logging level
+# Logging level
 RUST_LOG=info,pumpguard=debug
 ```
 
@@ -92,7 +77,7 @@ RUST_LOG=info,pumpguard=debug
 
 ```
 pumpguard-operator/
-├── pumpguard-rs/               # 🦀 Rust implementation (recommended)
+├── pumpguard-rs/               # 🦀 Rust implementation
 │   ├── Cargo.toml
 │   ├── Dockerfile
 │   ├── src/
@@ -112,20 +97,12 @@ pumpguard-operator/
 │   └── public/
 │       └── index.html          # Dashboard UI
 │
-├── src/                        # 📦 Node.js implementation (legacy)
-│   ├── index.js
-│   ├── config.js
-│   ├── modules/
-│   ├── dashboard/
-│   └── utils/
-│
 ├── k8s/                        # ☸️ Kubernetes manifests
 │   ├── crds/
 │   ├── deploy/
 │   ├── examples/
 │   └── monitoring/
 │
-├── operator/                   # Kubernetes operator (Node.js)
 └── data/                       # SQLite database (auto-created)
 ```
 
@@ -163,7 +140,7 @@ pumpguard-operator/
 
 ## WebSocket
 
-Connect to `ws://localhost:3000/ws` (Rust) or `ws://localhost:3000` (Node.js) for real-time updates:
+Connect to `ws://localhost:3000/ws` for real-time updates:
 
 ```javascript
 const ws = new WebSocket('ws://localhost:3000/ws');
@@ -196,32 +173,23 @@ You'll get instant alerts for:
 
 ## Docker
 
-### Rust Version (Recommended)
-
 ```bash
 cd pumpguard-rs
 docker build -t pumpguard/pumpguard:latest .
 docker run -p 3000:3000 --env-file .env pumpguard/pumpguard:latest
 ```
 
-### Node.js Version
+## Kubernetes
 
-```bash
-docker build -t pumpguard/pumpguard-node:latest .
-docker run -p 3000:3000 --env-file .env pumpguard/pumpguard-node:latest
-```
+PumpGuard includes Kubernetes manifests for production deployments.
 
-## Kubernetes Operator
-
-PumpGuard can be deployed as a Kubernetes Operator for production environments.
-
-### Install the Operator
+### Deploy
 
 ```bash
 ./k8s/deploy/install.sh
 ```
 
-### Deploy a PumpGuard Instance
+### Example PumpGuard Instance
 
 ```yaml
 apiVersion: pumpguard.fun/v1
@@ -289,15 +257,6 @@ kubectl apply -f k8s/monitoring/servicemonitor.yaml
 ### Grafana Dashboard
 
 Import the pre-built dashboard from `k8s/monitoring/grafana-dashboard.json`
-
-## Performance Comparison
-
-| Metric | Rust | Node.js |
-|--------|------|---------|
-| Memory Usage | ~50MB | ~150MB |
-| Startup Time | ~100ms | ~2s |
-| Binary Size | ~15MB | N/A (requires Node.js) |
-| Dependencies | Single binary | node_modules (~200MB) |
 
 ## RPC Recommendations
 
