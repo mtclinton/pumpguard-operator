@@ -15,7 +15,7 @@ mod utils;
 use anyhow::Result;
 use std::sync::Arc;
 use tokio::signal;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 use config::Config;
 use dashboard::DashboardServer;
@@ -101,6 +101,10 @@ impl PumpGuard {
 
         info!(target: "PUMPGUARD", "Initializing PumpGuard Monitor...");
 
+        // Link modules FIRST - subscribe to events before starting modules
+        // This ensures we don't miss any tokens during startup
+        self.link_modules();
+
         // Start Solana WebSocket subscription
         self.solana.start_log_subscription().await?;
 
@@ -116,9 +120,6 @@ impl PumpGuard {
         tm_result?;
         rd_result?;
         ww_result?;
-
-        // Link modules: auto-watch new tokens for rug detection
-        self.link_modules();
 
         info!(target: "PUMPGUARD", "✅ All modules started successfully!");
         info!(target: "PUMPGUARD", "Dashboard: http://localhost:{}", self.config.dashboard_port);
@@ -142,24 +143,38 @@ impl PumpGuard {
     /// Link modules together
     fn link_modules(&self) {
         // Subscribe to new tokens and add them to rug detector watch list
+        // IMPORTANT: This must be called BEFORE starting the token monitor
         let mut new_token_rx = self.token_monitor.subscribe_new_tokens();
         let rug_detector = self.rug_detector.clone();
 
         tokio::spawn(async move {
-            while let Ok(token) = new_token_rx.recv().await {
-                if !rug_detector.watched_tokens.contains_key(&token.mint) {
-                    rug_detector.watch_token(
-                        &token.mint,
-                        &token.name,
-                        &token.symbol,
-                        &token.creator,
-                        token.initial_liquidity,
-                    );
+            info!(target: "PUMPGUARD", "Token->RugDetector link active, waiting for tokens...");
+            
+            loop {
+                match new_token_rx.recv().await {
+                    Ok(token) => {
+                        if !rug_detector.watched_tokens.contains_key(&token.mint) {
+                            rug_detector.watch_token(
+                                &token.mint,
+                                &token.name,
+                                &token.symbol,
+                                &token.creator,
+                                token.initial_liquidity,
+                            );
+                        }
+                    }
+                    Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
+                        warn!(target: "PUMPGUARD", "Token link lagged {} messages - some tokens may not be watched", n);
+                    }
+                    Err(tokio::sync::broadcast::error::RecvError::Closed) => {
+                        info!(target: "PUMPGUARD", "Token broadcast channel closed");
+                        break;
+                    }
                 }
             }
         });
 
-        info!(target: "PUMPGUARD", "Modules linked - new tokens auto-watched by rug detector");
+        info!(target: "PUMPGUARD", "Modules linked - new tokens will be auto-watched by rug detector");
     }
 
     /// Graceful shutdown
