@@ -534,9 +534,15 @@
       font-weight: 600;
     }
 
-    .suspicion-badge.low { background: rgba(0, 255, 136, 0.2); color: var(--accent-green); }
-    .suspicion-badge.medium { background: rgba(255, 169, 77, 0.2); color: var(--accent-orange); }
-    .suspicion-badge.high { background: rgba(255, 71, 87, 0.2); color: var(--accent-red); }
+    .suspicion-badge.low, .suspicion-badge.safe { background: rgba(0, 255, 136, 0.2); color: var(--accent-green); }
+    .suspicion-badge.medium, .suspicion-badge.warning { background: rgba(255, 169, 77, 0.2); color: var(--accent-orange); }
+    .suspicion-badge.high, .suspicion-badge.danger { background: rgba(255, 71, 87, 0.2); color: var(--accent-red); }
+
+    .token-info {
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+    }
 
     .empty-state {
       text-align: center;
@@ -942,8 +948,68 @@
       }
     }
 
+    async function fetchWatchedTokens() {
+      try {
+        const response = await fetch('/api/rug/watched');
+        const tokens = await response.json();
+        updateWatchedTokensTable(tokens);
+      } catch (error) {
+        console.error('Failed to fetch watched tokens:', error);
+      }
+    }
+
+    function updateWatchedTokensTable(tokens) {
+      const tbody = document.getElementById('tokensTableBody');
+      
+      if (!tokens || tokens.length === 0) {
+        tbody.innerHTML = `
+          <tr>
+            <td colspan="4">
+              <div class="empty-state">
+                <div class="empty-state-icon">📭</div>
+                <div>No tokens being watched yet</div>
+              </div>
+            </td>
+          </tr>
+        `;
+        return;
+      }
+
+      // Sort by most recent first and limit to 50
+      const sortedTokens = tokens
+        .sort((a, b) => b.last_check - a.last_check)
+        .slice(0, 50);
+
+      tbody.innerHTML = sortedTokens.map(token => {
+        const suspicionClass = token.suspicion_score >= 70 ? 'danger' : 
+                               token.suspicion_score >= 40 ? 'warning' : 'safe';
+        const statusText = token.is_rugged ? '🚨 RUGGED' : 
+                          token.suspicion_score >= 70 ? '⚠️ High Risk' :
+                          token.suspicion_score >= 40 ? '⚡ Medium' : '✅ OK';
+        const mintShort = token.mint.slice(0, 4) + '...' + token.mint.slice(-4);
+        
+        return `
+          <tr>
+            <td>
+              <div class="token-info">
+                <span class="token-symbol">${escapeHtml(token.symbol)}</span>
+                <span class="token-mint">${mintShort}</span>
+              </div>
+            </td>
+            <td>${token.current_liquidity.toFixed(2)} SOL</td>
+            <td>
+              <span class="suspicion-badge ${suspicionClass}">${token.suspicion_score}</span>
+            </td>
+            <td>${statusText}</td>
+          </tr>
+        `;
+      }).join('');
+    }
+
     connect();
+    fetchWatchedTokens();
     setInterval(fetchStats, 30000); // Poll every 30 seconds
+    setInterval(fetchWatchedTokens, 30000); // Update watched tokens every 30 seconds
   </script>
 </body>
 </html>
