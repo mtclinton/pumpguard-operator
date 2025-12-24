@@ -1,6 +1,6 @@
-![PumpGuard](pumpguard.png)
-
 # 🛡️ PumpGuard
+
+![PumpGuard](pumpguard.png)
 
 **pump.fun Monitoring Suite - Monitor Only, No Trading**
 
